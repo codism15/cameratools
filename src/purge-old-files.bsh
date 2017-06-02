@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+# old files
+find "${HOME}/cam" -mtime +1
+
+# empty directory
+find "${HOME}/cam" -type d -empty
