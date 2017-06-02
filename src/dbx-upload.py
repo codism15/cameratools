@@ -4,16 +4,9 @@ import os
 import sys
 import datetime
 import time
-import dropbox
 import logging
-
-# config logging
-FORMAT = "%(asctime)s %(name)s %(levelname)s: %(message)s"
-logging.basicConfig(format=FORMAT,
-    datefmt = '%Y-%m-%dT%H:%M:%S',
-    level = logging.INFO, filename = 'log/dbx-upload.log')
-
-logging.info('== START')
+import fnmatch
+import dropbox
 
 # parse command line
 parser = argparse.ArgumentParser()
@@ -27,7 +20,13 @@ parser.add_argument('-f', '--remoteFolder', dest='remoteFolder', action='store',
 
 args = parser.parse_args()
 
-# print args
+# config logging
+FORMAT = "%(asctime)s %(name)s %(levelname)s: %(message)s"
+logging.basicConfig(format=FORMAT,
+    datefmt = '%Y-%m-%dT%H:%M:%S',
+    level = logging.INFO, filename = '%s/log/dbx-upload.log'%(os.path.expanduser('~')))
+
+logging.info('== START')
 
 # validate the file must start with base dir
 file_abspath = os.path.abspath(args.file)

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-inotifywait -m -r -e create --format %w/%f "${HOME}/cam" | while read FILENAME
+inotifywait -m -r -e create -e moved_to --format %w%f "${HOME}/cam" | while read FILENAME
 do
-        python dbx-upload.py -a @.auth -d "${HOME}/cam" -f cam "${FILENAME}"
+        if [[ "${FILENAME}" == *.mp4 ]]; then
+                python dbx-upload.py -a "@${HOME}/.dropbox_auth" -d "${HOME}/cam" -f cam "${FILENAME}"
+        fi
 done
