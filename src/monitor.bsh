@@ -3,6 +3,8 @@
 inotifywait -m -r -e create -e moved_to --format %w%f "${HOME}/cam" | while read FILENAME
 do
         if [[ "${FILENAME}" == *.mp4 ]]; then
-                python dbx-upload.py -a "@${HOME}/.dropbox_auth" -d "${HOME}/cam" -f cam "${FILENAME}"
+                python dbx-upload.py -a "@${HOME}/.dropbox_auth" \
+                        -r 'AMC.+\\(20[-0-9]+)\\.+\\(\d+)\.(\d+)\.(\d+)-.*mp4' '\1T\2\3\4.mp4'
+                        -d "${HOME}/cam" -f cam "${FILENAME}"
         fi
 done
