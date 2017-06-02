@@ -17,8 +17,14 @@ parser.add_argument('-d', '--dir', dest='baseDir', action='store', metavar='Dir'
     help = 'local base directory, used to derive the server path')
 parser.add_argument('-f', '--remoteFolder', dest='remoteFolder', action='store', metavar='F',
     help = 'remote folder')
+parser.add_argument('-r', '--replace', dest='replace', action='append',
+    metavar=('regex', 'str'), nargs = 2, help = 'replace part of the path')
 
 args = parser.parse_args()
+
+# debug only, for argparse test
+# print args
+# sys.exit()
 
 # config logging
 FORMAT = "%(asctime)s %(name)s %(levelname)s: %(message)s"
@@ -37,6 +43,16 @@ if not file_abspath.startswith(base_abspath):
 
 # get the file relative path to the base
 file_relative_path = file_abspath[len(base_abspath):]
+
+# test to see if replace pattern needs to be processed
+if args.replace is not None:
+    new_path = file_relative_path
+    for pat, str in args.replace:
+        new_path = re.sub(pat, str, new_path)
+    
+    if new_path != file_relative_path:
+        logging.info('transalted file name %s -> %s', file_relative_path, new_path)
+        file_relative_path = new_path
 
 # get server path
 remote_folder = '' if args.remoteFolder is None else args.remoteFolder
