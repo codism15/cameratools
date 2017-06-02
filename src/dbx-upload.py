@@ -19,6 +19,8 @@ parser.add_argument('-f', '--remoteFolder', dest='remoteFolder', action='store',
     help = 'remote folder')
 parser.add_argument('-r', '--replace', dest='replace', action='append',
     metavar=('regex', 'str'), nargs = 2, help = 'replace part of the path')
+parser.add_argument('-l', '--loglevel', dest='loglevel', action='store', metavar='L',
+    default = "info", help = 'specify log level, defalt to INFO')
 
 args = parser.parse_args()
 
@@ -27,10 +29,18 @@ args = parser.parse_args()
 # sys.exit()
 
 # config logging
+log_levels = {
+    "info": logging.INFO,
+    "debug": logging.DEBUG,
+    "error": logging.ERROR,
+    "warning": logging.WARN,
+    "warn": logging.WARN
+}
+
 FORMAT = "%(asctime)s %(name)s %(levelname)s: %(message)s"
 logging.basicConfig(format=FORMAT,
     datefmt = '%Y-%m-%dT%H:%M:%S',
-    level = logging.INFO, filename = '%s/log/dbx-upload.log'%(os.path.expanduser('~')))
+    level = log_levels[args.loglevel.lower()], filename = '%s/log/dbx-upload.log'%(os.path.expanduser('~')))
 
 logging.info('== START')
 
@@ -46,13 +56,13 @@ file_relative_path = file_abspath[len(base_abspath):]
 
 # test to see if replace pattern needs to be processed
 if args.replace is not None:
-    new_path = file_relative_path
     for pat, str in args.replace:
-        new_path = re.sub(pat, str, new_path)
-    
-    if new_path != file_relative_path:
-        logging.info('transalted file name %s -> %s', file_relative_path, new_path)
-        file_relative_path = new_path
+        new_path = re.sub(pat, str, file_relative_path)
+        if new_path != file_relative_path:
+            logging.debug('replace pattern(%s -> %s): %s -> %s', pat, str, file_relative_path, new_path)
+            file_relative_path = new_path
+        else:
+            logging.debug('replace pattern(%s) did not make any change', pat)
 
 # get server path
 remote_folder = '' if args.remoteFolder is None else args.remoteFolder
