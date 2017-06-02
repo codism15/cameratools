@@ -52,7 +52,7 @@ if not file_abspath.startswith(base_abspath):
     sys.exit('file [%s] is not in base dir [%s]' % (file_abspath, base_abspath))
 
 # get the file relative path to the base
-file_relative_path = file_abspath[len(base_abspath):]
+file_relative_path = file_abspath[len(base_abspath):].replace('\\', '/')
 
 # test to see if replace pattern needs to be processed
 if args.replace is not None:
