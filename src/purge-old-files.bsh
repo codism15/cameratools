@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # old files
-find "${HOME}/cam" -mtime +1
+find "/home/camera/cam" -type f -mtime +7 -delete
 
 # empty directory
-find "${HOME}/cam" -type d -empty
+find "/home/camera/cam" -type d -empty -delete
+

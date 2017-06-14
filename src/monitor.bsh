@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 
-inotifywait -m -r -e create -e moved_to --format %w%f "${HOME}/cam" | while read FILENAME
+CAM_DIR=/home/camera/cam
+
+inotifywait -m -r -e create -e moved_to --format %w%f "${CAM_DIR}" | while read FILENAME
 do
-        if [[ "${FILENAME}" == *.mp4 ]]; then
+        if [[ "${FILENAME}" == *.mp4 ]] || [[ "${FILENAME}" == *.jpg ]] ; then
                 python dbx-upload.py -a "@${HOME}/.dropbox_auth" -l debug \
                         -r 'AMC.+/(20[-0-9]+)/.+/(\d+)\.(\d+)\.(\d+)-.*mp4' '\1T\2\3\4.mp4' \
-                        -d "${HOME}/cam" -f cam "${FILENAME}"
+			-r 'AMC.*/(20[-0-9]+)/.*/(\d+)/(\d+)/(\d+).*jpg' '\1T\2\3\4.jpg' \
+			-r '20[0-9]+.*/ARC(20[0-9]{6})([0-9]{6})' '\1T\2' \
+                        -d "${CAM_DIR}" -f cam "${FILENAME}"
+	else
+		echo Ignore ${FILENAME} >> "${HOME}/log/monitor.log"
         fi
 done
