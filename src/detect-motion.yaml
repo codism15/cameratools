@@ -1,0 +1,12 @@
+single_detection: false
+no_gui: false
+resize_width: 480
+resize_height: 480
+threshold: 50
+dilate_iteration: 2
+contour_minimal_area: 20
+tracer:
+  frame_count: 10
+  distance: 50
+  max_missed_frame: 10
+  area_variation: 1.1

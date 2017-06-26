@@ -3,7 +3,40 @@ import cv2
 import sys
 import time
 import math
+import argparse
+import yaml
+import logging
+import os
 from collections import deque
+
+# parse command line
+parser = argparse.ArgumentParser()
+parser.add_argument('file', help='video file to be scanned')
+parser.add_argument('-l', '--loglevel', dest='loglevel', action='store', metavar='L',
+    default = "info", help = 'specify log level, defalt to INFO')
+
+args = parser.parse_args()
+
+# config logging
+log_levels = {
+    "info": logging.INFO,
+    "debug": logging.DEBUG,
+    "error": logging.ERROR,
+    "warning": logging.WARN,
+    "warn": logging.WARN
+}
+
+FORMAT = "%(asctime)s %(name)s %(levelname)s: %(message)s"
+logging.basicConfig(format=FORMAT,
+    datefmt = '%Y-%m-%dT%H:%M:%S',
+    level = log_levels[args.loglevel.lower()], filename = '%s/log/detect-motion.log'%(os.path.expanduser('~')))
+
+logging.info('== START')
+
+# load the configuration
+
+with open('detect-motion.yaml', 'r') as f:
+    conf = yaml.safe_load(f)
 
 class Tracer():
     def __init__(self, rect_list, frame_count = 1, missed_frame = 0):
@@ -11,6 +44,7 @@ class Tracer():
         self.rectangles.extend(rect_list)
         self.frame_count = frame_count
         self.missed_frame = missed_frame
+        self.area_variation = conf['tracer']['area_variation']
 
     def process_frame(self, rect_list):
         self.frame_count += 1
@@ -26,7 +60,7 @@ class Tracer():
             x1, y1, w1, h1 = rect
             area1 = w1 * h1
             area_variation = abs(float((area1 - area)) / area)
-            if area_variation > 1.1:
+            if area_variation > self.area_variation:
                 continue
 
             # test movement
@@ -63,12 +97,20 @@ def merge_rect(a, b):
     h = max(a[1]+a[3], b[1]+b[3]) - y
     return (x, y, w, h)
 
-def merge_rectangles(rectangles):
+def merge_rectangles(rectangles, frame = None):
+    # if frame is not None:
+    #     img_temp = frame.copy()
+    #user_pressed_esc = False
     g = 0
+    
     while len(rectangles) > 1 and g < len(rectangles):
+        rectangle_count_before = len(rectangles)
+        # for idx, rect in enumerate(rectangles):
+        #     x, y, w, h = rect
+        #     cv2.rectangle(img_temp, (x, y), (x+w, y+h), (0, 0, 200), 1)
         merge_list = []
         x, y, w, h = rectangles[g]
-        for idx in xrange(g+1, len(rectangles) - 1):
+        for idx in xrange(g+1, len(rectangles)):
             if has_intersection(rectangles[g], rectangles[idx]):
                 merge_list.append(idx)
                 x, y, w, h = merge_rect((x, y, w, h), rectangles[idx])
@@ -79,81 +121,112 @@ def merge_rectangles(rectangles):
         else:
             g += 1
 
-# no motion
-#cap = cv2.VideoCapture('../sample-videos/20170615T102512.mp4')
+        # debug
+        # if img_temp is not None:
+        #     debug_info = 'rectangles: %d/%d, g: %d' % (rectangle_count_before, len(rectangles), g)
+        #     cv2.putText(img_temp, debug_info, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 255))
+        #     for idx, rect in enumerate(rectangles):
+        #         x, y, w, h = rect
+        #         cv2.rectangle(img_temp, (x, y), (x+w, y+h), (0, 255, 0), 1)
 
-# with motion
-cap = cv2.VideoCapture('../sample-videos/20170608T202125.mp4')
+        #     if not user_pressed_esc:
+        #         cv2.imshow('frame', img_temp)
+        #         k = cv2.waitKey(100000) & 0xff
+        #         if k == 27:
+        #             user_pressed_esc = True
+        #     img_temp = frame.copy()
 
-# night, car moving out
-#cap = cv2.VideoCapture('../sample-videos/00.06.26-00.06.54.mp4')
+def get_resize_factor(video_width, video_height):
+    resize_width = conf['resize_width']
+    resize_height = conf['resize_height']
+    if resize_width >= video_width and resize_height >= video_height:
+        return 1.0
+    width_factor = float(resize_width) / video_width
+    height_factor = float(resize_width) / video_height
+    resize_factor = min(width_factor, height_factor)
+    return resize_factor
 
-#cap = cv2.VideoCapture('../sample-videos/20170615T103505 cloud butterfly.mp4')
-#cap = cv2.VideoCapture('../sample-videos/21.18.00-21.18.38 car light on garage.mp4')
-#cap = cv2.VideoCapture('../sample-videos/12.06.20-12.06.48 front cloud.mp4')
-#cap = cv2.VideoCapture('../sample-videos/21.48.00-21.50.00 insects.mp4')
-#cap = cv2.VideoCapture('../sample-videos/22.12.00-22.14.00 faraway move and insects.mp4')
+def get_rect_center(rect):
+    x, y, w, h = rect
+    return (x + w /2, y + h/2)
 
-# fgbg = cv2.createBackgroundSubtractorMOG()
-#fgbg = cv2.createBackgroundSubtractorKNN()
-#fgbg = cv2.createBackgroundSubtractorMOG2()
+# load video
+logging.info('loading %s', args.file)
+cap = cv2.VideoCapture(args.file)
+video_width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)   # float
+video_height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT) # float
+fps = cap.get(cv2.CAP_PROP_FPS)
 
-#kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
-#fgbg = cv2.createBackgroundSubtractorGMG()
+logging.info('video info: %0.0fx%0.0f, fps: %d', video_width, video_height, fps)
+
+resize_factor = get_resize_factor(video_width, video_height)
+logging.debug('resize_factor: %f', resize_factor)
+
+# load common settings into variables for fast access
+threshold = conf['threshold']
+dilate_iteration = conf['dilate_iteration']
+contour_minimal_area = conf['contour_minimal_area']
+no_gui = conf['no_gui']
+tracer_frame_count = conf['tracer']['frame_count']
+tracer_max_missed_frame = conf['tracer']['max_missed_frame']
+tracer_distance = conf['tracer']['distance']
+single_detection = conf['single_detection']
 
 last_frame = None
-queue = deque()
 tracers = []
-#font = cv2.InitFont(cv.CV_FONT_HERSHEY_SIMPLEX, 1, 1, 0, 3, 8)
-
+frame_count = 0
+motion_detected = False
 while(1):
     ret, frame = cap.read()
 
     if not ret:
         break
 
+    frame_count += 1
+
     #frame = cv2.GaussianBlur(frame, (5, 5), 0)
-    resized = cv2.resize(frame, (0,0), fx=0.5, fy=0.5)
-    img = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
-    
+    img_resized = cv2.resize(frame, (0,0), fx=resize_factor, fy=resize_factor)
+    img_gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
 
     if last_frame is None:
-        last_frame = img
+        last_frame = img_gray
         continue
 
-    delta = cv2.absdiff(last_frame, img)
-    thresh = cv2.threshold(delta, 50, 255, cv2.THRESH_BINARY)[1]
-    #fgmask = fgbg.apply(img)
-    #fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_OPEN, kernel)
+    img_delta = cv2.absdiff(last_frame, img_gray)
+    img_bw = cv2.threshold(img_delta, threshold, 255, cv2.THRESH_BINARY)[1]
 
-    #thresh = cv2.erode(thresh, None, iterations=1)
-    thresh = cv2.dilate(thresh, None, iterations=2)
+    #img_bw = cv2.erode(img_bw, None, iterations=1)
+    if dilate_iteration > 0:
+        img_bw = cv2.dilate(img_bw, None, iterations=dilate_iteration)
+
     # in opencv 3.2, findContours no longer modifies the input image
     # but the code below creates a copy of the image anyway for old
     # version opencv compatibility.
-    image, cnts, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    #contour_list = []
+    image, cnts, _ = cv2.findContours(img_bw.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # loop through contours to create rectangles
     rectangles = []
     for c in cnts:
-        if cv2.contourArea(c) > 15:
-            #contour_list.append(c)
+        if cv2.contourArea(c) >= contour_minimal_area:
             x, y, w, h = cv2.boundingRect(c)
             rectangles.append([x, y, w, h])
-            #cv2.rectangle(resized, (x, y), (x+w, y+h), (0, 255, 0), 1)
+            cv2.rectangle(img_resized, (x, y), (x+w, y+h), (0, 0, 200), 1)
             #cv2.drawContours(resized, c, -1, (0, 0, 200))
-            #frame_pause = 100
-    
+
     # merge rectangles
     rectangle_count_before_merge = len(rectangles)
     
-    merge_rectangles(rectangles)
+    merge_rectangles(rectangles, img_resized)
 
     rectangle_count_after_merge = len(rectangles)
 
-    for r in rectangles:
-        x, y , w, h = r
-        cv2.rectangle(resized, (x, y), (x+w, y+h), (0, 0, 255), 1)
+    # draw merged rectangles for debug purpose
+    if not no_gui:
+        for r in rectangles:
+            x, y, w, h = r
+            cv2.rectangle(img_resized, (x, y), (x+w, y+h), (0, 255, 0), 1)
 
+    # process tracers
     if len(tracers) == 0:
         for rect in rectangles:
             tracers.append(Tracer([rect]))
@@ -161,43 +234,66 @@ while(1):
         new_tracers = []
         for tracer in tracers:
             for t in tracer.process_frame(rectangles):
-                if t.missed_frame < 5:
+                if t.missed_frame <= tracer_max_missed_frame:
                     new_tracers.append(t)
 
         tracers = new_tracers
 
-    #queue.append(contour_list)
-    # if len(queue) > 10:
-    #     for contour_list in queue:
-    #         for c in contour_list:
-    #             x, y, w, h = cv2.boundingRect(c)
-    #             cv2.rectangle(resized, (x, y), (x+w, y+h), (0, 255, 0), 1)
-    #     queue.popleft()
-    #print('tracer size: %d'%(len(tracers)))
-    debug_info = 'tracer count: %d, rect count before: %d, rect count after: %d' % (len(tracers), rectangle_count_before_merge, rectangle_count_after_merge)
-    cv2.putText(resized, debug_info, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 255))
+    # draw debug info
+    if not no_gui:
+        debug_info = 'frame: %d, tracers: %d, rectangles: %d/%d' % (frame_count, len(tracers), rectangle_count_before_merge, rectangle_count_after_merge)
+        cv2.putText(img_resized, debug_info, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 255))
+
+    show_delay = 100
+    # detect motion
+
     for tracer in tracers:
-        if len(tracer.rectangles) == 1:
+        if len(tracer.rectangles) <= 1 or tracer.frame_count < tracer_frame_count:
             continue
-        # calculate color
-        #color = (tracer.frame_count - tracer.missed_frame) * 255 / tracer.frame_count
         
         last = None
+        total_distance = 0
         for rect in tracer.rectangles:
             if last is not None:
-                x, y, w, h = last
-                x1, y1, w1, h1 = rect
-                pt = (x + w / 2, y + h / 2)
-                pt1 = (x1 + w1 / 2, y1 + h1 / 2)
-                cv2.line(resized, pt, pt1, (0, 0, 255))
+                x, y = get_rect_center(last)
+                x1, y1 = get_rect_center(rect)
+                total_distance += math.sqrt((x1-x)*(x1-x) + (y1-y)*(y1-y))
             last = rect
 
-    cv2.imshow('frame', resized)
-    k = cv2.waitKey(50) & 0xff
-    if k == 27:     # ESC: 27
-        break
+        if total_distance >= tracer_distance:
+            if not motion_detected:
+                logging.info('first motion detected at frame %d', frame_count)
+                show_delay = 10000
+            motion_detected = True
+            break
 
-    last_frame = img
+    # draw tracers for debug
+    if not no_gui:
+        for tracer in tracers:
+            if len(tracer.rectangles) <= 1:
+                continue
+
+            first = tracer.rectangles[0]
+            last = tracer.rectangles[-1]
+            pt = get_rect_center(first)
+            pt1 = get_rect_center(last)
+            cv2.line(img_resized, pt, pt1, (0, 255, 0))
+
+    user_pressed_esc = False
+    if not no_gui:
+        cv2.imshow('frame', img_resized)
+        k = cv2.waitKey(show_delay) & 0xff
+        user_pressed_esc = k == 27
+
+    if user_pressed_esc or (motion_detected and single_detection):
+        break
+    last_frame = img_gray
 
 cap.release()
-cv2.destroyAllWindows()
+if not no_gui:
+    cv2.destroyAllWindows()
+
+if motion_detected:
+    exit(2)
+else:
+    exit(0)

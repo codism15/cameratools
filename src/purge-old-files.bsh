@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 
+# process local files
 # old files
 find "/home/camera/cam" -type f -mtime +7 -delete
 
 # empty directory
 find "/home/camera/cam" -type d -empty -delete
 
+# process remote files
+python dbx-purge.py -a "@~/.dropbox_auth" cam/cam1 -k 3
+python dbx-purge.py -a "@~/.dropbox_auth" cam/cam2 -k 0
+python dbx-purge.py -a "@~/.dropbox_auth" cam/front-cam1 -k 3
