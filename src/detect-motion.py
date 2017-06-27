@@ -244,7 +244,7 @@ while(1):
         debug_info = 'frame: %d, tracers: %d, rectangles: %d/%d' % (frame_count, len(tracers), rectangle_count_before_merge, rectangle_count_after_merge)
         cv2.putText(img_resized, debug_info, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 255))
 
-    show_delay = 100
+    show_delay = 50
     # detect motion
 
     for tracer in tracers:
@@ -263,7 +263,7 @@ while(1):
         if total_distance >= tracer_distance:
             if not motion_detected:
                 logging.info('first motion detected at frame %d', frame_count)
-                show_delay = 10000
+                show_delay = 50
             motion_detected = True
             break
 
